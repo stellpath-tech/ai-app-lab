@@ -262,6 +262,7 @@ class ArkMessage(BaseModel):
     name: Optional[str] = None
     tool_call_id: Optional[str] = None
     tool_calls: Optional[List[ChatCompletionMessageToolCallParam]] = None
+    dialog_id: Optional[str] = None
 
     @classmethod
     @model_validator(mode="before")
