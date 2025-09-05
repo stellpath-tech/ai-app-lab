@@ -52,6 +52,7 @@ logger = logging.getLogger(__name__)
 async def get_request_messages_for_llm(
     contexts: utils.Storage,
     context_id: str,
+    dialog_id: str,
     request: ArkChatRequest,
     prompt: str,
 ) -> List[ArkMessage]:
@@ -63,7 +64,7 @@ async def get_request_messages_for_llm(
         text = request.messages[-1].content[0].text
     else:
         text = request.messages[-1].content
-    request_messages = request_messages + [ArkMessage(role="user", content=text)]
+    request_messages = request_messages + [ArkMessage(role="user", content=text, dialog_id=dialog_id)]
     request_messages = request_messages[-LAST_HISTORY_MESSAGES:]
     return [ArkMessage(role="system", content=prompt)] + request_messages
 
@@ -102,10 +103,10 @@ async def chat_with_vlm(
 
 @task(watch_io=False)
 async def llm_answer(
-    contexts, context_id, request, parameters: ArkChatParameters
+    contexts, context_id, dialog_id, request, parameters: ArkChatParameters
 ) -> Tuple[bool, Optional[AsyncIterable[ArkChatCompletionChunk]]]:
     request_messages = await get_request_messages_for_llm(
-        contexts, context_id, request, prompt.LLM_PROMPT
+        contexts, context_id, dialog_id, request, prompt.LLM_PROMPT
     )
     llm = BaseChatLanguageModel(
         endpoint_id=LLM_ENDPOINT,
@@ -130,9 +131,10 @@ async def chat_with_llm(
     request: ArkChatRequest,
     parameters: ArkChatParameters,
     context_id: str,
+    dialog_id: str,
 ) -> Tuple[bool, Optional[AsyncIterable[ArkChatCompletionChunk]]]:
     response_task = asyncio.create_task(
-        llm_answer(contexts, context_id, request, parameters)
+        llm_answer(contexts, context_id, dialog_id, request, parameters)
     )
     logger.info("llm can respond")
     return await response_task
@@ -144,6 +146,7 @@ async def chat_with_branches(
     request: ArkChatRequest,
     parameters: ArkChatParameters,
     context_id: str,
+    dialog_id: str,
 ) -> AsyncIterable[Union[ArkChatCompletionChunk, ArkChatResponse]]:
     """
     Launch two tasks to attempt answering with/without long term memory
@@ -153,7 +156,7 @@ async def chat_with_branches(
     """
     vlm_task = asyncio.create_task(chat_with_vlm(request, parameters))
     llm_task = asyncio.create_task(
-        chat_with_llm(contexts, request, parameters, context_id)
+        chat_with_llm(contexts, request, parameters, context_id, dialog_id)
     )
     can_response, vlm_iter = await vlm_task
     if can_response:
@@ -187,7 +190,7 @@ async def summarize_image(
     resp = await vlm.arun()
     message = resp.choices[0].message.content
     message = FRAME_DESCRIPTION_PREFIX + message
-    await contexts.append(context_id, ArkMessage(role="assistant", content=message))
+    await contexts.append(context_id, ArkMessage(role="assistant", content=message, dialog_id="do_not_delete"))
 
 
 @task(watch_io=False)
@@ -215,6 +218,12 @@ async def default_model_calling(
         )
         return
 
+    dialog_id: Optional[str] = get_headers().get("X-Dialog-Id", None)
+    if not_blank(dialog_id):
+        await contexts.filter_history(context_id, lambda msg: msg.dialog_id != dialog_id)
+    else:
+        logger.warning("dialog_id is not provided")
+
     # Initialize TTS connection asynchronously before launching LLM request to reduce latency
     tts_client = AsyncTTSClient(
         connection_params=ConnectionParams(
@@ -233,7 +242,7 @@ async def default_model_calling(
 
     # Use LLM and VLM to answer user's question
     # Received a response iterator from LLM or VLM
-    response_iter = await chat_with_branches(contexts, request, parameters, context_id)
+    response_iter = await chat_with_branches(contexts, request, parameters, context_id, dialog_id)
     await connection_task
     message = ""
     tts_stream_output = tts_client.tts(response_iter, stream=request.stream)
@@ -255,16 +264,18 @@ async def default_model_calling(
         text = request.messages[-1].content
     await contexts.append(
         context_id,
-        ArkMessage(role="user", content=text),
+        ArkMessage(role="user", content=text, dialog_id=dialog_id),
     )
-    await contexts.append(context_id, ArkMessage(role="assistant", content=message))
+    await contexts.append(context_id, ArkMessage(role="assistant", content=message, dialog_id=dialog_id))
+
+def not_blank(dialog_id):
+    return dialog_id != None and type(dialog_id) == str and dialog_id.strip() != ""
 
 
 @task(watch_io=False)
 async def main(request: ArkChatRequest) -> AsyncIterable[Response]:
     async for resp in default_model_calling(request):
         yield resp
-
 
 if __name__ == "__main__":
     port = os.getenv("_FAAS_RUNTIME_PORT")

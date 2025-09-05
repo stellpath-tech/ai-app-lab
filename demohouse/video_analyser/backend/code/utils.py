@@ -12,7 +12,7 @@
 import asyncio
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List
 
 from arkitect.core.component.llm.model import ArkMessage
 from arkitect.utils.common import Singleton
@@ -32,6 +32,11 @@ class Storage(ABC):
     @classmethod
     @abstractmethod
     async def get_history(cls, key: str) -> List[ArkMessage]:
+        pass
+
+    @classmethod
+    @abstractmethod
+    async def filter_history(cls, key: str, filter_func: Callable[[ArkMessage], bool]) -> List[ArkMessage]:
         pass
 
     @classmethod
@@ -68,6 +73,15 @@ class CoroutineSafeMap(Storage, Singleton):
             ctx = cls._map.get(key)
             if ctx is None:
                 return []
+            return ctx.history
+
+    @classmethod
+    async def filter_history(cls, key: str, filter_func: Callable[[ArkMessage], bool]) -> List[ArkMessage]:
+        async with cls._lock:
+            ctx = cls._map.get(key)
+            if ctx is None:
+                return []
+            ctx.history = [msg for msg in ctx.history if filter_func(msg)]
             return ctx.history
 
     @classmethod
