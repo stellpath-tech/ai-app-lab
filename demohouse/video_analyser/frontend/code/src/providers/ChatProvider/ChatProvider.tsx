@@ -167,6 +167,13 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
     startCapture();
     setIsCameraOn(true);
     setChatState(EChatState.UserSpeaking);
+
+    // 启动后立即发送 test: ok
+    fetchVlmText(
+      ctxId.current,
+      '', // frameNow 为空字符串
+      'ok', () => {} , () => {}
+    );
   };
 
   const stop = () => {
