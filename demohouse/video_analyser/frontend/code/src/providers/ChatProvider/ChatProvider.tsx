@@ -15,7 +15,7 @@ import { useMediaStream } from '@/hooks/useMediaStream';
 import { usePlayBotAudio } from '@/hooks/usePlayBotAudio';
 import { defaultBarsData } from '@/hooks/useTrackUserSpeakWave';
 import { useVideoAnnotation } from '@/hooks/useVideoAnnotation';
-import { ChatContext, EChatState } from '@/providers/ChatProvider/context';
+import { ChatContext, EChatState, ChatMode } from '@/providers/ChatProvider/context';
 import { fetchVlmImg } from '@/requests/fetchVlmImg';
 import { fetchVlmText } from '@/requests/fetchVlmText';
 import { useSyncRef } from '@/useSyncRef';
@@ -30,6 +30,8 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
   });
   const [chatState, setChatState] = useState<EChatState>(EChatState.Idle);
   const chatStateRef = useSyncRef(chatState);
+  const [chatMode, setChatMode] = useState<ChatMode>('free');
+  const chatModeRef = useSyncRef(chatMode);
   const ctxId = useRef(uuidv4());
   const audioPlayingRef = useRef(false);
 
@@ -57,10 +59,10 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
 
   const annoRef = useRef<AnnoRef>(null);
 
-  const { frameCanvasRef, startCapture, stopCapture, captureAnnotatedFrame } =
+  const { frameCanvasRef, startCapture, stopCapture, captureAnnotatedFrame, startSpeaking, stopSpeaking, setMode } =
     useVideoAnnotation(videoRef, annoRef, base64data => {
       fetchVlmImg(ctxId.current, base64data);
-    });
+    }, chatMode);
 
   //
 
@@ -70,6 +72,11 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
     setUserPrompt('');
     setBotContent('');
     setChatState(EChatState.UserSpeaking);
+    
+    // 快速应答模式：重置图片捕获状态，准备下一轮
+    if (chatModeRef.current === 'quick') {
+      stopSpeaking(); // 确保重置状态
+    }
   };
   // const { addToQueue, reset: resetBotAudioPlay } = useBotAudioPlayV2({
   //   hasMoreData: isWaitingBotSSEChunk,
@@ -91,11 +98,22 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
     chatState,
     streamRef,
     text => {
-      text && setUserPrompt(text);
+      if (text) {
+        setUserPrompt(text);
+        // 快速应答模式：检测到用户开始说话时开始捕获图片
+        if (chatModeRef.current === 'quick') {
+          startSpeaking();
+        }
+      }
     },
     async text => {
       stopRecording();
       // pauseRecording()
+      
+      // 快速应答模式：用户停止说话时停止图片捕获
+      if (chatModeRef.current === 'quick') {
+        stopSpeaking();
+      }
 
       const shouldFetch =
         !isWaitingBotSSEChunkRef.current && !audioPlayingRef.current;
@@ -138,8 +156,10 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
     },
   );
 
-  const start = async () => {
+  const start = async (mode: ChatMode) => {
     ctxId.current = uuidv4();
+    setChatMode(mode);
+    setMode(mode);
     await getMediaStream(streamRef);
     await connectAsrWs();
 
@@ -192,6 +212,7 @@ export const ChatProvider: FC<PropsWithChildren> = ({ children }) => {
         streamRef,
         chatState,
         isCameraOn,
+        chatMode,
         //
         start,
         stop,

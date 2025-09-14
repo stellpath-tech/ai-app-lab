@@ -13,6 +13,7 @@ import { RefObject, useCallback } from 'react';
 import { useFrameCapture } from './useFrameCapture';
 import { ScreenHeight, ScreenWidth } from '@/const';
 import { AnnoRef } from '@/components/DrawingBoard';
+import { ChatMode } from '@/providers/ChatProvider/context';
 
 const drawPath = (
   ctx: CanvasRenderingContext2D,
@@ -37,13 +38,17 @@ export const useVideoAnnotation = (
   videoRef: RefObject<HTMLVideoElement>,
   annoRef: RefObject<AnnoRef>,
   onFrameCap: (base64data: string) => void,
+  mode: ChatMode = 'free',
 ) => {
   const {
     canvasRef: frameCanvasRef,
     capture,
     startCapture,
     stopCapture,
-  } = useFrameCapture(videoRef, onFrameCap);
+    startSpeaking,
+    stopSpeaking,
+    setMode,
+  } = useFrameCapture(videoRef, onFrameCap, mode);
 
   const captureAnnotatedFrame = useCallback(async () => {
     const frameBase64 = capture();
@@ -97,5 +102,8 @@ export const useVideoAnnotation = (
     startCapture,
     stopCapture,
     captureAnnotatedFrame,
+    startSpeaking,
+    stopSpeaking,
+    setMode,
   };
 };

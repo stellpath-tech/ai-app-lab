@@ -12,6 +12,8 @@
 import { createContext, Dispatch, MutableRefObject } from 'react';
 import { AnnoRef } from '@/components/DrawingBoard';
 
+export type ChatMode = 'free' | 'quick';
+
 interface IChatContext {
   previewConfig: {
     showInterruptBtn: boolean;
@@ -25,7 +27,8 @@ interface IChatContext {
   >;
   chatState: EChatState;
   isCameraOn: boolean;
-  start: () => Promise<void>;
+  chatMode: ChatMode;
+  start: (mode: ChatMode) => Promise<void>;
   stop: () => void;
   interrupt: () => Promise<void>;
 

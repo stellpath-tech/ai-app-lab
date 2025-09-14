@@ -31,11 +31,11 @@ const Demo = () => {
       console.error('Error entering fullscreen or locking orientation:', error);
     }
   }
-  const handleClick = async () => {
+  const handleClick = async (mode: 'free' | 'quick') => {
     // try {
     //   await enterFullscreenPortrait();
     // } catch (error) {}
-    await start();
+    await start(mode);
     navigate('/chat');
   };
   return (
@@ -66,15 +66,27 @@ const Demo = () => {
           />
         </div>
       </div>
-      <Button
-        onClick={() => {
-          handleClick();
-        }}
-        shape={'round'}
-        className={'w-[200px]'}
-      >
-        试用 Demo
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button
+          onClick={() => {
+            handleClick('free');
+          }}
+          shape={'round'}
+          className={'w-[200px]'}
+        >
+          自由对话
+        </Button>
+        <Button
+          onClick={() => {
+            handleClick('quick');
+          }}
+          shape={'round'}
+          className={'w-[200px]'}
+          type="secondary"
+        >
+          快速应答
+        </Button>
+      </div>
     </div>
   );
 };
